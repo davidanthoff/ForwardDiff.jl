@@ -285,7 +285,7 @@ end
 for fsym in ForwardDiff.auto_defined_unary_tens_funcs
     testexpr = :($(fsym)(a) + $(fsym)(b) - $(fsym)(c) * $(fsym)(d))
 
-    @eval function testf(x::Vector)
+    testf = @eval (x::Vector) -> begin
         a,b,c,d = x
         return $testexpr
     end
