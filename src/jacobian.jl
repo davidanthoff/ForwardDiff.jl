@@ -20,15 +20,25 @@ end
 
 abstract JacobianResult <: ForwardDiffResult
 
+function value(result::JacobianResult)
+    out = similar(result.ydual, numtype(eltype(result.ydual)))
+    return jacobian!(out, result)
+end
+
+function value!(out, result::JacobianResult)
+    @assert length(out) == length(result.ydual)
+    @simd for i in 1:length(result.ydual)
+        @inbounds out[i] = value(result.ydual[i])
+    end
+    return out
+end
+
+# vector mode #
+#-------------#
+
 immutable JacobianVectorResult{Y} <: JacobianResult
     len::Int
     ydual::Y
-end
-
-immutable JacobianChunkResult{Y,J} <: JacobianResult
-    len::Int
-    ydual::Y
-    jac::J
 end
 
 function jacobian(result::JacobianVectorResult)
@@ -47,22 +57,17 @@ function jacobian!(out, result::JacobianVectorResult)
     return out
 end
 
+# chunk mode #
+#------------#
+
+immutable JacobianChunkResult{Y,J} <: JacobianResult
+    ydual::Y
+    jac::J
+end
+
 jacobian(result::JacobianChunkResult) = copy(result.jac)
 
 jacobian!(out, result::JacobianChunkResult) = copy!(out, result.jac)
-
-function value(result::JacobianResult)
-    out = similar(result.ydual, numtype(eltype(result.ydual)))
-    return jacobian!(out, result)
-end
-
-function value!(out, result::JacobianResult)
-    @assert length(out) == length(result.ydual)
-    @simd for i in 1:length(result.ydual)
-        @inbounds out[i] = value(result.ydual[i])
-    end
-    return out
-end
 
 ###############
 # API methods #
@@ -174,10 +179,10 @@ end
         ydualdef = :(ydual = Vector{Dual{L,eltype(yvar)}}(length(yvar)))
         ydualcompute = :(f(ydual, xdual))
     end
-    R = L % C == 0 ? C : L % C
-    fullchunks = div(L - R, C)
-    lastoffset = L - R + 1
-    reseedexpr = R == C ? :() : :(seeds = fetchseeds(eltype(xdual), $(Val{R}())))
+    lastchunksize = L % C == 0 ? C : L % C
+    fullchunks = div(L - lastchunksize, C)
+    lastoffset = L - lastchunksize + 1
+    reseedexpr = lastchunksize == C ? :() : :(seeds = fetchseeds(eltype(xdual), $(Val{lastchunksize}())))
     return quote
         @assert length(x) == L
         xdual = fetchxdual(x, len, chunk)
@@ -206,9 +211,9 @@ end
         $(reseedexpr)
         seed!(xdual, x, $(lastoffset), seeds)
         $(ydualcompute)
-        jacloadchunk!(out, ydual, $(lastoffset), $(Val{R}()))
+        jacloadchunk!(out, ydual, $(lastoffset), $(Val{lastchunksize}()))
 
-        return JacobianChunkResult(L, ydual, out)
+        return JacobianChunkResult(ydual, out)
     end
 end
 

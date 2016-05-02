@@ -20,15 +20,12 @@ end
 
 abstract GradientResult <: ForwardDiffResult
 
-immutable GradientVectorResult{N} <: GradientResult
-    len::Int
-    dual::N
-end
+# vector mode #
+#-------------#
 
-immutable GradientChunkResult{N,J} <: GradientResult
+immutable GradientVectorResult{D} <: GradientResult
     len::Int
-    dual::N
-    grad::J
+    dual::D
 end
 
 function gradient(result::GradientVectorResult)
@@ -44,11 +41,21 @@ function gradient!(out, result::GradientVectorResult)
     return out
 end
 
-gradient(result::GradientChunkResult) = copy(result.grad)
+value(result::GradientVectorResult) = value(result.dual)
+
+# chunk mode #
+#------------#
+
+immutable GradientChunkResult{V,G} <: GradientResult
+    value::V
+    grad::G
+end
+
+gradient(result::GradientChunkResult) = result.grad
 
 gradient!(out, result::GradientChunkResult) = copy!(out, result.grad)
 
-value(result::GradientResult) = value(result.dual)
+value(result::GradientChunkResult) = result.value
 
 ###############
 # API methods #
@@ -110,17 +117,17 @@ end
 
 @generated function chunk_mode_gradient!{C,L}(multithread::Val{false}, chunk::Val{C}, len::Val{L}, outvar, f, x)
     if outvar <: DummyVar
-        outdef = :(out = Vector{numtype(eltype(dual))}(L))
+        outdef = :(out = Vector{numtype(typeof(dual))}(L))
     else
         outdef = quote
             @assert length(outvar) == L
             out = outvar
         end
     end
-    R = L % C == 0 ? C : L % C
-    fullchunks = div(L - R, C)
-    lastoffset = L - R + 1
-    reseedexpr = R == C ? :() : :(seeds = fetchseeds(eltype(xdual), $(Val{R}())))
+    lastchunksize = L % C == 0 ? C : L % C
+    fullchunks = div(L - lastchunksize, C)
+    lastoffset = L - lastchunksize + 1
+    reseedexpr = lastchunksize == C ? :() : :(seeds = fetchseeds(eltype(xdual), $(Val{lastchunksize}())))
     return quote
         @assert length(x) == L
         xdual = fetchxdual(x, len, chunk)
@@ -148,9 +155,9 @@ end
         $(reseedexpr)
         seed!(xdual, x, $(lastoffset), seeds)
         dual = f(xdual)
-        gradloadchunk!(out, dual, $(lastoffset), $(Val{R}()))
+        gradloadchunk!(out, dual, $(lastoffset), $(Val{lastchunksize}()))
 
-        return GradientChunkResult(L, dual, out)
+        return GradientChunkResult(value(dual), out)
     end
 end
 
@@ -172,10 +179,10 @@ if IS_MULTITHREADED_JULIA
                 out = outvar
             end
         end
-        R = L % C == 0 ? C : L % C
-        fullchunks = div(L - R, C)
-        lastoffset = L - R + 1
-        reseedexpr = R == C ? :() : :(seeds = fetchseeds(eltype(xdual), $(Val{R}())))
+        lastchunksize = L % C == 0 ? C : L % C
+        fullchunks = div(L - lastchunksize, C)
+        lastoffset = L - lastchunksize + 1
+        reseedexpr = lastchunksize == C ? :() : :(seeds = fetchseeds(eltype(xdual), $(Val{lastchunksize}())))
         return quote
             @assert length(x) == L
             tid = compat_threadid()
@@ -210,9 +217,9 @@ if IS_MULTITHREADED_JULIA
             $(reseedexpr)
             seed!(xdual, x, $(lastoffset), seeds)
             dual = f(xdual)
-            gradloadchunk!(out, dual, $(lastoffset), $(Val{R}()))
+            gradloadchunk!(out, dual, $(lastoffset), $(Val{lastchunksize}()))
 
-            return GradientChunkResult(L, dual, out)
+            return GradientChunkResult(value(dual), out)
         end
     end
 else

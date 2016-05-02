@@ -20,9 +20,12 @@ end
 
 abstract HessianResult <: ForwardDiffResult
 
-immutable HessianVectorResult{N} <: HessianResult
+# vector mode #
+#-------------#
+
+immutable HessianVectorResult{D} <: HessianResult
     len::Int
-    dual::N
+    dual::D
 end
 
 function hessian(result::HessianVectorResult)
@@ -54,7 +57,26 @@ function gradient!(out, result::HessianVectorResult)
     return out
 end
 
-value(result::HessianResult) = value(value(result.dual))
+value(result::HessianVectorResult) = value(value(result.dual))
+
+# chunk mode #
+#------------#
+
+immutable HessianChunkResult{T,G,H} <: HessianResult
+    value::T
+    grad::G
+    hess::H
+end
+
+hessian(result::HessianChunkResult) = result.hess
+
+hessian!(out, result::HessianChunkResult) = copy!(out, result.hess)
+
+gradient(result::HessianChunkResult) = result.grad
+
+gradient!(out, result::HessianChunkResult) = copy!(out, result.grad)
+
+value(result::HessianChunkResult) = result.value
 
 ###############
 # API methods #
@@ -86,7 +108,15 @@ end
 # chunk mode #
 #------------#
 
-#TODO
+@inline function dispatch_hessian!{C,L}(::Tuple{Val{C}, Val{L}}, allresults, multithread, x, out, f)
+    result = chunk_mode_hessian!(multithread, Val{C}(), Val{L}(), out, f, x)
+    return pickresult(allresults, result, out)
+end
+
+@inline function dispatch_hessian{C,L}(::Tuple{Val{C}, Val{L}}, allresults, multithread, x, f)
+    result = chunk_mode_hessian!(multithread, Val{C}(), Val{L}(), DummyVar(), f, x)
+    return pickresult(allresults, result, result.grad)
+end
 
 #######################
 # workhorse functions #
@@ -98,13 +128,71 @@ end
 function vector_mode_hessian!{L}(len::Val{L}, f, x)
     @assert length(x) == L
     xdual = fetchxdual(x, len, len, len)
-    nseeds = fetchseeds(eltype(xdual))
-    mseeds = fetchseeds(numtype(eltype(xdual)))
-    seed!(xdual, x, 1, nseeds, mseeds)
+    inseeds = fetchseeds(numtype(eltype(xdual)))
+    outseeds = fetchseeds(eltype(xdual))
+    seed!(xdual, x, 1, inseeds, outseeds)
     return HessianVectorResult(L, f(xdual))
 end
 
 # chunk mode #
 #------------#
 
-#TODO
+@generated function chunk_mode_hessian!{C,L}(multithread::Val{false}, chunk::Val{C}, len::Val{L}, outvar, f, x)
+    if outvar <: DummyVar
+        outdef = :(out = Matrix{numtype(eltype(outdual))}(L, L))
+    else
+        outdef = quote
+            @assert size(outvar) == (L, L)
+            out = outvar
+        end
+    end
+    lastchunksize = L % C == 0 ? C : L % C
+    fullchunks = div(L - lastchunksize, C)
+    lastoffset = L - lastchunksize + 1
+    reseedexpr = lastchunksize == C ? :() : :(seeds = fetchseeds(eltype(xdual), $(Val{lastchunksize}())))
+    return quote
+        @assert length(x) == L
+        xdual = fetchxdual(x, len, chunk, chunk)
+        inseeds = fetchseeds(numtype(eltype(xdual)))
+        outseeds = fetchseeds(eltype(xdual))
+        inzeroseed = zero(Partials{C,numtype(eltype(xdual))})
+        outzeroseed = zero(Partials{C,eltype(xdual)})
+        seedall!(xdual, x, len, inzeroseed, outzeroseed)
+
+        # do first chunk manually
+        seed!(xdual, x, 1, seeds)
+        dual = f(xdual)
+        seed!(xdual, x, 1, zeroseed)
+        outdual
+        hessloadchunk!(out, dual, 1, chunk)
+
+        # do middle chunks
+        for c in 2:$(fullchunks)
+            offset = ((c - 1) * C + 1)
+            seed!(xdual, x, offset, seeds)
+            dual = f(xdual)
+            seed!(xdual, x, offset, zeroseed)
+            hessloadchunk!(out, dual, chunk, offset)
+        end
+
+        # do final chunk manually
+        $(reseedexpr)
+        seed!(xdual, x, $(lastoffset), seeds)
+        dual = f(xdual)
+        hessloadchunk!(out, dual, $(lastoffset), $(Val{lastchunksize}()))
+
+        $(outdef)
+
+
+        return HessianChunkResult(L, outdual, out)
+    end
+end
+#
+#
+# function hessloadchunk!{C}(out, dual, offset, chunk::Val{C})
+#     k = offset - 1
+#     for i in 1:C
+#         j = i + k
+#         out[j] = partials(dual, i)
+#     end
+# end

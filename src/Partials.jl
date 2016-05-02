@@ -6,7 +6,6 @@ end
 # Utility/Accessor Functions #
 ##############################
 
-@inline numtype(x) = eltype(x)
 @inline numtype{N,T}(::Partials{N,T}) = T
 @inline numtype{N,T}(::Type{Partials{N,T}}) = T
 

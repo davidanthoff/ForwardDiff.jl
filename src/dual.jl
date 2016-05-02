@@ -61,7 +61,7 @@ end
 Base.copy(n::Dual) = n
 
 Base.eps(n::Dual) = eps(value(n))
-Base.eps{F<:Dual}(::Type{F}) = eps(numtype(F))
+Base.eps{D<:Dual}(::Type{D}) = eps(numtype(D))
 
 Base.floor{T<:Real}(::Type{T}, n::Dual) = floor(T, value(n))
 Base.ceil{T<:Real}(::Type{T}, n::Dual) = ceil(T, value(n))

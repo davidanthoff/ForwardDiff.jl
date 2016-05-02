@@ -139,7 +139,7 @@ function fetchxdual{L,N}(x, len::Val{L}, chunk::Val{N})
     return cachefetch!(compat_threadid(), Dual{N,eltype(x)}, len)
 end
 
-function fetchxdual{L,N,M}(x, len::Val{L}, rowchunk::Val{N}, colchunk::Val{M})
+function fetchxdual{L,M,N}(x, len::Val{L}, inchunk::Val{M}, outchunk::Val{N})
     return cachefetch!(compat_threadid(), Dual{N,Dual{M,eltype(x)}}, len)
 end
 
@@ -151,12 +151,15 @@ end
 # seeding work arrays #
 #######################
 
+# gradient/Jacobian versions
+
 function seedall!{N,T,L}(xdual::Vector{Dual{N,T}}, x, len::Val{L}, seed::Partials{N,T})
     @simd for i in 1:L
         @inbounds xdual[i] = Dual{N,T}(x[i], seed)
     end
     return xdual
 end
+
 
 function seed!{N,T}(xdual::Vector{Dual{N,T}}, x, offset, seed::Partials{N,T})
     k = offset - 1
@@ -176,12 +179,29 @@ function seed!{N,T}(xdual::Vector{Dual{N,T}}, x, offset, seeds::Vector{Partials{
     return xdual
 end
 
-function seed!{N,M,T}(xdual::Vector{Dual{N,Dual{M,T}}}, x, offset,
-                      nseeds::Vector{Partials{N,Dual{M,T}}}, mseeds::Vector{Partials{M,T}})
+# Hessian versions
+
+function seedall!{N,M,T,L}(xdual::Vector{Dual{N,Dual{M,T}}}, x, len::Val{L}, inseed::Partials{N,T}, outseed::Partials{N,Dual{M,T}})
+    @simd for i in 1:L
+        @inbounds xdual[i] = Dual{N,Dual{M,T}}(Dual{M,T}(x[j], inseed), outseed)
+    end
+    return xdual
+end
+
+function seed!{N,M,T}(xdual::Vector{Dual{N,Dual{M,T}}}, x, offset, inseed::Partials{N,T}, outseed::Partials{N,Dual{M,T}})
     k = offset - 1
     @simd for i in 1:N
         j = i + k
-        @inbounds xdual[j] = Dual{N,Dual{M,T}}(Dual{M,T}(x[j], mseeds[i]), nseeds[i])
+        @inbounds xdual[j] = Dual{N,Dual{M,T}}(Dual{M,T}(x[j], inseed), outseed)
+    end
+    return xdual
+end
+
+function seed!{N,M,T}(xdual::Vector{Dual{N,Dual{M,T}}}, x, offset, inseeds::Vector{Partials{M,T}}, outseeds::Vector{Partials{N,Dual{M,T}}})
+    k = offset - 1
+    @simd for i in 1:N
+        j = i + k
+        @inbounds xdual[j] = Dual{N,Dual{M,T}}(Dual{M,T}(x[j], inseeds[i]), outseeds[i])
     end
     return xdual
 end
