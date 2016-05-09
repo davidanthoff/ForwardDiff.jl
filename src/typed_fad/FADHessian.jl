@@ -3,9 +3,9 @@ immutable FADHessian{T<:Real, n} <: Number
   h::Vector{T}
 end
 
-FADHessian{T<:Real, n} (d::GraDual{T, n}, h::Vector{T}) = FADHessian{T, length(d.g)}(d, h)
+FADHessian{T<:Real, n}(d::GraDual{T, n}, h::Vector{T}) = FADHessian{T, length(d.g)}(d, h)
 
-FADHessian{T<:Real, n} (d::GraDual{T, n}) = FADHessian{T, length(d.g)}(d, zeros(T, convert(Int, n*(n+1)/2)))
+FADHessian{T<:Real, n}(d::GraDual{T, n}) = FADHessian{T, length(d.g)}(d, zeros(T, convert(Int, n*(n+1)/2)))
 
 function FADHessian{T<:Real}(v::Vector{T})
   n = length(v)
@@ -405,8 +405,8 @@ function digamma{T<:Real, n}(x::FADHessian{T, n})
   FADHessian{T, n}(digamma(x.d), h)
 end
 
-function typed_fad_hessian!{T<:Real}(f::Function, ::Type{T})
-  function g!(x::Vector{T}, hessian_output::Matrix{T})
+function typed_fad_hessian!(f::Function, ::Type{Float64})
+  function g!(x::Vector{Float64}, hessian_output::Matrix{Float64})
     fvalue = f(FADHessian(x))
     n, k = size(hessian_output, 1), 1
 
@@ -427,7 +427,7 @@ function typed_fad_hessian!{T<:Real}(f::Function, ::Type{T})
   return g!
 end
 
-function typed_fad_hessian{T<:Real}(f::Function, ::Type{T})
-  g(x::Vector{T}) = hessian(f(FADHessian(x)))
+function typed_fad_hessian(f::Function, ::Type{Float64})
+  g(x::Vector{Float64}) = hessian(f(FADHessian(x)))
   return g
 end

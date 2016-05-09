@@ -3,7 +3,7 @@ immutable GraDual{T<:Real, n} <: Number
     g::Vector{T}
 end
 
-GraDual{T<:Real} (v::T, g::Vector{T}) = GraDual{T, length(g)}(v, g)
+GraDual{T<:Real}(v::T, g::Vector{T}) = GraDual{T, length(g)}(v, g)
 
 function GraDual{T<:Real}(v::Vector{T})
   n = length(v)
@@ -188,8 +188,8 @@ lgamma{T<:Real, n}(x::GraDual{T, n}) = GraDual{T, n}(lgamma(x.v), digamma(x.v)*x
 digamma{T<:Real, n}(x::GraDual{T, n}) = GraDual{T, n}(digamma(x.v), trigamma(x.v)*x.g)
 trigamma{T<:Real, n}(x::GraDual{T, n}) = GraDual{T, n}(trigamma(x.v), polygamma(2, x.v)*x.g)
 
-function typed_fad_gradient!{T<:Real}(f::Function, ::Type{T})
-  function g!(x::Vector{T}, gradient_output::Vector{T})
+function typed_fad_gradient!(f::Function, ::Type{Float64})
+  function g!(x::Vector{Float64}, gradient_output::Vector{Float64})
     fvalue = f(GraDual(x))
     for i = 1:length(gradient_output)
       gradient_output[i] = fvalue.g[i]
@@ -198,8 +198,8 @@ function typed_fad_gradient!{T<:Real}(f::Function, ::Type{T})
   return g!
 end
 
-function typed_fad_gradient{T<:Real}(f::Function, ::Type{T})
-  g(x::Vector{T}) = grad(f(GraDual(x)))
+function typed_fad_gradient(f::Function, ::Type{Float64})
+  g(x::Vector{Float64}) = grad(f(GraDual(x)))
   return g
 end
 

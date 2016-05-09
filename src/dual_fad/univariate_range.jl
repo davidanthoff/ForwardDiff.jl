@@ -11,16 +11,16 @@ function dual_fad{T <: Real}(f::Function, x::Vector{T}, gradient_output, dualvec
   end
 end
 
-function dual_fad_gradient!{T <: Real}(f::Function, ::Type{T}; n::Int=1)
-  dualvec = Array(Dual{T}, n)
-  g!(x::Vector{T}, gradient_output::Vector{T}) = dual_fad(f, x, gradient_output, dualvec)
+function dual_fad_gradient!(f::Function, ::Type{Float64}; n::Int=1)
+  dualvec = Array(Dual{Float64}, n)
+  g!(x::Vector{Float64}, gradient_output::Vector{Float64}) = dual_fad(f, x, gradient_output, dualvec)
   return g!
 end
 
-function dual_fad_gradient{T <: Real}(f::Function, ::Type{T}; n::Int=1)
-  dualvec = Array(Dual{T}, n)
-  gradient_output = Array(T, n)
-  function g(x::Vector{T})
+function dual_fad_gradient(f::Function, ::Type{Float64}; n::Int=1)
+  dualvec = Array(Dual{Float64}, n)
+  gradient_output = Array(Float64, n)
+  function g(x::Vector{Float64})
     dual_fad(f, x, gradient_output, dualvec)
     gradient_output
   end

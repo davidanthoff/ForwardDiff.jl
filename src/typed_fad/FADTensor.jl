@@ -629,8 +629,8 @@ function atanh{T<:Real, n}(x::FADTensor{T, n})
   FADTensor{T, n}(atanh(x.h), t)
 end
 
-function typed_fad_tensor!{T<:Real}(f::Function, ::Type{T})
-  function g!(x::Vector{T}, tensor_output::Array{T, 3})
+function typed_fad_tensor!(f::Function, ::Type{Float64})
+  function g!(x::Vector{Float64}, tensor_output::Array{Float64, 3})
     fvalue = f(FADTensor(x))
     n, k = size(tensor_output, 1), 1
 
@@ -665,7 +665,7 @@ function typed_fad_tensor!{T<:Real}(f::Function, ::Type{T})
   return g!
 end
 
-function typed_fad_tensor{T<:Real}(f::Function, ::Type{T})
-  g(x::Vector{T}) = tensor(f(FADTensor(x)))
+function typed_fad_tensor(f::Function, ::Type{Float64})
+  g(x::Vector{Float64}) = tensor(f(FADTensor(x)))
   return g
 end
